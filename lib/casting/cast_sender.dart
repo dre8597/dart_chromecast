@@ -368,5 +368,8 @@ class CastSender extends Object {
     _mediaChannel = null;
     _castSession = null;
     _contentQueue = [];
+    _currentCastMedia = null;
+    _mediaCurrentTimeTimer?.cancel();
+    _mediaCurrentTimeTimer = null;
   }
 }
