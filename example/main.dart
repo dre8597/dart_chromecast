@@ -111,6 +111,8 @@ void startCasting(
   // instantiate the chromecast sender class
   final CastSender castSender = CastSender(
     device,
+    displayName: 'Dart Chromecast',
+    appIcon: 'https://www.gstatic.com/cast/sdk/assets/default_media_receiver_logo.png',
   );
 
   // listen for cast session updates and save the state when
