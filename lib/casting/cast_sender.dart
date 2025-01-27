@@ -17,6 +17,8 @@ import 'package:universal_io/io.dart';
 class CastSender extends Object {
   final Logger log = new Logger('CastSender');
   final CastDevice device;
+  String? _displayName;
+  String? _appIcon;
 
   SecureSocket? _socket;
 
@@ -36,20 +38,31 @@ class CastSender extends Object {
   late List<CastMedia> _contentQueue;
   CastMedia? _currentCastMedia;
 
-  CastSender(this.device) {
+  CastSender(this.device, {String? displayName, String? appIcon}) {
     _contentQueue = [];
+    _displayName = displayName;
+    _appIcon = appIcon;
 
     castSessionController = StreamController.broadcast();
     castMediaStatusController = StreamController.broadcast();
+  }
+
+  /// Sets or updates the display name for the cast application
+  void setDisplayName(String displayName) {
+    _displayName = displayName;
+  }
+
+  /// Sets or updates the app icon URL for the cast application
+  void setAppIcon(String appIcon) {
+    _appIcon = appIcon;
   }
 
   Future<bool> connect() async {
     connectionDidClose = false;
 
     if (null == _castSession) {
-      _castSession = CastSession(
-          sourceId: 'client-${Random().nextInt(99999)}',
-          destinationId: 'receiver-0');
+      _castSession =
+          CastSession(sourceId: 'client-${Random().nextInt(99999)}', destinationId: 'receiver-0');
     }
 
     // connect to socket
@@ -67,15 +80,14 @@ class CastSender extends Object {
   }
 
   Future<bool> reconnect({String? sourceId, String? destinationId}) async {
-    _castSession =
-        CastSession(sourceId: sourceId, destinationId: destinationId);
+    _castSession = CastSession(sourceId: sourceId, destinationId: destinationId);
     bool connected = await connect();
     if (!connected) {
       return false;
     }
 
-    _mediaChannel = MediaChannel.Create(
-        socket: _socket, sourceId: sourceId, destinationId: destinationId);
+    _mediaChannel =
+        MediaChannel.Create(socket: _socket, sourceId: sourceId, destinationId: destinationId);
     _mediaChannel!.sendMessage({'type': 'GET_STATUS'});
 
     // now wait for the media to actually get a status?
@@ -116,10 +128,25 @@ class CastSender extends Object {
 
   void launch([String? appId]) {
     if (null != _receiverChannel) {
-      _receiverChannel!.sendMessage({
+      Map<String, dynamic> launchMessage = {
         'type': 'LAUNCH',
         'appId': appId ?? 'CC1AD845',
-      });
+        'requestId': 1,
+      };
+
+      // Add display name if set
+      if (_displayName != null) {
+        launchMessage['displayName'] = _displayName;
+      }
+
+      // Add app icon if set
+      if (_appIcon != null) {
+        launchMessage['appImages'] = [
+          {'url': _appIcon}
+        ];
+      }
+
+      _receiverChannel!.sendMessage(launchMessage);
     }
   }
 
@@ -127,8 +154,7 @@ class CastSender extends Object {
     loadPlaylist([media], forceNext: forceNext);
   }
 
-  void loadPlaylist(List<CastMedia> media,
-      {append = false, forceNext = false}) {
+  void loadPlaylist(List<CastMedia> media, {append = false, forceNext = false}) {
     if (!append) {
       _contentQueue = media;
     } else {
@@ -208,14 +234,11 @@ class CastSender extends Object {
             timeout: Duration(seconds: 10));
 
         _connectionChannel = ConnectionChannel.create(_socket,
-            sourceId: _castSession!.sourceId,
-            destinationId: _castSession!.destinationId);
+            sourceId: _castSession!.sourceId, destinationId: _castSession!.destinationId);
         _heartbeatChannel = HeartbeatChannel.create(_socket,
-            sourceId: _castSession!.sourceId,
-            destinationId: _castSession!.destinationId);
+            sourceId: _castSession!.sourceId, destinationId: _castSession!.destinationId);
         _receiverChannel = ReceiverChannel.create(_socket,
-            sourceId: _castSession!.sourceId,
-            destinationId: _castSession!.destinationId);
+            sourceId: _castSession!.sourceId, destinationId: _castSession!.destinationId);
 
         _socket!.listen(_onSocketData, onDone: _dispose);
       } catch (e) {
@@ -246,15 +269,13 @@ class CastSender extends Object {
 
   void _handleReceiverStatus(Map payload) {
     log.info("_handleReceiverStatus()");
-    if (null == _mediaChannel &&
-        true == payload['status']?.containsKey('applications')) {
+    if (null == _mediaChannel && true == payload['status']?.containsKey('applications')) {
       // re-create the channel with the transportId the chromecast just sent us
       if (false == _castSession?.isConnected) {
         _castSession = _castSession!
           ..mergeWithChromeCastSessionMap(payload['status']['applications'][0]);
         _connectionChannel = ConnectionChannel.create(_socket,
-            sourceId: _castSession!.sourceId,
-            destinationId: _castSession!.destinationId);
+            sourceId: _castSession!.sourceId, destinationId: _castSession!.destinationId);
         _connectionChannel!.sendMessage({'type': 'CONNECT'});
         _mediaChannel = MediaChannel.Create(
             socket: _socket,
@@ -297,10 +318,8 @@ class CastSender extends Object {
         }
 
         if (_castSession!.castMediaStatus!.isPlaying) {
-          _mediaCurrentTimeTimer =
-              Timer(Duration(seconds: 1), _getMediaCurrentTime);
-        } else if (_castSession!.castMediaStatus!.isPaused &&
-            null != _mediaCurrentTimeTimer) {
+          _mediaCurrentTimeTimer = Timer(Duration(seconds: 1), _getMediaCurrentTime);
+        } else if (_castSession!.castMediaStatus!.isPaused && null != _mediaCurrentTimeTimer) {
           _mediaCurrentTimeTimer!.cancel();
           _mediaCurrentTimeTimer = null;
         }
@@ -317,8 +336,7 @@ class CastSender extends Object {
         log.fine("Media status is empty");
 
         if (null == _currentCastMedia && _contentQueue.isNotEmpty) {
-          log.fine(
-              "no media is currently being casted, try to cast first in queue");
+          log.fine("no media is currently being casted, try to cast first in queue");
           _handleContentQueue();
         }
       }
@@ -344,8 +362,7 @@ class CastSender extends Object {
   }
 
   void _getMediaCurrentTime() {
-    if (null != _mediaChannel &&
-        true == _castSession?.castMediaStatus?.isPlaying) {
+    if (null != _mediaChannel && true == _castSession?.castMediaStatus?.isPlaying) {
       _mediaChannel!.sendMessage({
         'type': 'GET_STATUS',
       });
